@@ -73,7 +73,7 @@ operations for setup and management. PINs and passwords stay in the terminal.
 The control center is **0.6.0**, with OpenPGP-card and resident SSH-key management.
 Its interface is in English, German and Brazilian Portuguese, with English
 fallback; the existing authentication components retain their 50-language support.
-The standalone lock/Polkit plugins remain 0.3.0 and the Rust helper remains 0.2.0.
+The standalone lock/Polkit plugins are 0.3.1 and the Rust helper is 0.2.1.
 
 For terminal-only setup, clone the current source and run `./install.sh`.
 The wizard lets you choose sudo, desktop authentication and optional GNOME Keyring
