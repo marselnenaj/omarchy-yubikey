@@ -63,16 +63,23 @@ Each key's row has its own **Delete from security key** button, next to **Remove
 copy**. Its confirmation dialog carries this warning, and the terminal:
 
 1. prints the warning again, and names the selected copy's fingerprint and application;
-2. runs `fido2-token -L -k <application>` and picks the key whose user ID matches the
-   copy's filename (including user IDs that `ssh-keygen -K` wrote as hexadecimal). If
-   no single key matches, it lists the application's keys by user ID and type;
-3. requires typing `DELETE <application>`;
-4. runs `fido2-token -D -i <credential id>`, then removes the copy, which no longer
-   works, and its Git-host entry.
+2. reads the credential ID (key handle) from the copy. A copy with a passphrase hides
+   it, so `ssh-keygen -K` first downloads the resident keys into a private folder, and
+   the one with the copy's public key gives it;
+3. shows the Git-host change and asks for it, before anything is deleted. Declining
+   it, or a managed file that can't be read, leaves the key and its copy alone;
+4. runs `fido2-token -L -k <application>` and looks for that exact credential. If
+   it isn't there (the key was replaced, or the copy was made on another security
+   key), nothing is deleted: another key with the same application and user ID is
+   never taken in its place;
+5. requires typing `DELETE <application>`;
+6. runs `fido2-token -D -i <credential id>`, then writes the reviewed Git-host change
+   and removes the copy, which no longer works, without asking again.
 
-`fido2-token` asks for the FIDO2 PIN in steps 2 and 4. Only one security key may be
-connected. A key that is only on the security key, without a copy in `~/.ssh`, is
-imported first and then deleted from its row.
+`fido2-token` asks for the FIDO2 PIN in steps 4 and 6, and `ssh-keygen` in step 2 for
+a copy with a passphrase. Only one security key may be connected. A key that is only
+on the security key, without a copy in `~/.ssh`, is imported first and then deleted
+from its row.
 
 ## Git hosts
 

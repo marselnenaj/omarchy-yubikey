@@ -6,8 +6,11 @@
   **Remove copy** deletes only the file in `~/.ssh` and keeps the key on the
   security key; **Delete from security key**, in the urgent colour, deletes the
   key itself permanently, after a warning in the confirmation dialog and the
-  terminal and a typed `DELETE <application>`, then removes the copy. The
-  credential is found by application and user ID with `fido2-token`.
+  terminal and a typed `DELETE <application>`, then removes the copy. Only the
+  credential of that very copy is deleted, found by the key handle in the copy
+  (for a copy with a passphrase, by downloading the resident keys first): a copy
+  of a key replaced since, or made on another security key, deletes nothing.
+  The Git-host change is reviewed before the key is deleted.
 
 - Create resident SSH keys from the control center. **Create SSH key** opens a
   terminal wizard for the algorithm, application, user ID (a random one by
