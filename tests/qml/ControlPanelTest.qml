@@ -56,6 +56,33 @@ TestCase {
     checkPublicFields(panel)
     var openpgpCard = findChild(panel,"openpgpCard")
     verify(openpgpCard.visible)
+    var openpgpImport = findChild(panel,"openpgpImport")
+    var openpgpRemove = findChild(panel,"openpgpRemove")
+    function openpgpAction(button) {
+      button.clicked()
+      var action = panel.pendingAction
+      keyClick(Qt.Key_Escape)
+      compare(dialog.opened,false)
+      return action
+    }
+    // Ready key: the import button offers an update, not highlighted; removal is separate.
+    var updateText = openpgpImport.text
+    verify(!openpgpImport.primary)
+    compare(openpgpAction(openpgpImport), "openpgp-import")
+    verify(openpgpRemove.enabled)
+    compare(openpgpAction(openpgpRemove), "openpgp-remove")
+    var savedOpenpgp = panel.snapshot.openpgp
+    panel.snapshot = Object.assign({}, panel.snapshot, {openpgp:{card:true,imported:false,linked:false,trusted:false,ready:false,key:null}})
+    verify(openpgpImport.text !== updateText)
+    verify(openpgpImport.primary)
+    verify(!openpgpRemove.enabled)
+    compare(openpgpAction(openpgpImport), "openpgp-import")
+    panel.snapshot = Object.assign({}, panel.snapshot, {openpgp:{card:true,imported:true,linked:false,trusted:true,ready:false,key:{algorithm:"ed25519"}}})
+    compare(openpgpImport.text, updateText)
+    verify(openpgpImport.primary)
+    panel.snapshot = Object.assign({}, panel.snapshot, {openpgp:{card:true,imported:true,linked:true,trusted:true,ready:true,key:{algorithm:"ed25519",expired:true}}})
+    verify(openpgpImport.primary)
+    panel.snapshot = Object.assign({}, panel.snapshot, {openpgp:savedOpenpgp})
     var details = findChild(panel,"openpgpDetails")
     verify(details.visible)
     compare(panel.openpgpDetails().length, 9)

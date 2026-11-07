@@ -78,6 +78,12 @@ Item {
     if (!openpgp.linked) return strings.t("Not linked to the card")
     return strings.t("Unavailable")
   }
+  // An imported key that is not ready (unlinked, expired, revoked or disabled)
+  // may be fixed by fetching it again; the Update button is highlighted then.
+  function openpgpNeedsUpdate() {
+    var key = openpgp.key || {}
+    return openpgp.imported === true && (openpgp.ready !== true || key.expired === true || key.revoked === true || key.disabled === true)
+  }
   // Omarchy 4.5's Commons.Translations can shadow the bundled loader and lack
   // number(); fall back to plain digits rather than losing every detail row.
   function openpgpNumber(value) {
@@ -294,9 +300,11 @@ Item {
                     }
                   }
                 }
-                ActionButton { text: strings.t("Import key"); primary: !root.openpgp.linked; enabled: root.canAct; onClicked: root.ask("openpgp-import", text) }
+                // Importing again refreshes an imported key and its card links, so the
+                // same button reads "Update key" once the key is in the keyring.
+                ActionButton { objectName: "openpgpImport"; text: root.openpgp.imported ? strings.t("Update key") : strings.t("Import key"); primary: !root.openpgp.imported || root.openpgpNeedsUpdate(); enabled: root.canAct; onClicked: root.ask("openpgp-import", text) }
                 ActionButton { text: strings.t("Trust as my key"); enabled: root.canAct && root.openpgp.imported && !root.openpgp.trusted; onClicked: root.ask("openpgp-trust", text) }
-                ActionButton { text: strings.t("Remove from keyring"); enabled: root.canAct && root.openpgp.imported; onClicked: root.ask("openpgp-remove", text) }
+                ActionButton { objectName: "openpgpRemove"; text: strings.t("Remove from keyring"); enabled: root.canAct && root.openpgp.imported; onClicked: root.ask("openpgp-remove", text) }
                 ActionButton { objectName: "openpgpIdentityToggle"; text: root.showOpenpgpIdentity ? strings.t("Hide name and email") : strings.t("Show name and email"); visible: !!root.openpgp.key && !!root.openpgp.key.uid; onClicked: root.showOpenpgpIdentity = !root.showOpenpgpIdentity }
               }
               FeatureCard {
