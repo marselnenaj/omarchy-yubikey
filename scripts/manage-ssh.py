@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create or import resident SSH key handles and manage explicitly selected Git hosts.
+"""Create, import or delete resident SSH keys and manage explicitly selected Git hosts.
 
 Runs as the desktop user. PINs and passphrases belong to ssh-keygen's terminal.
 Public applications/fingerprints may enter the GUI; filenames and credential
@@ -45,6 +45,12 @@ KEY_TYPES = {'sk-ssh-ed25519' + '@' + 'openssh.com': 'ed25519-sk',
              'sk-ecdsa-sha2-nistp256' + '@' + 'openssh.com': 'ecdsa-sk'}
 PRIVATE_BEGIN = '-----BEGIN OPENSSH ' + 'PRIVATE KEY-----'
 CREATE_TIMEOUT = 180
+TOKEN_TIMEOUT = 120
+# fido2-token -L -k prints "NN: <credential id> <display name...> <user id> <type> <prot> <...>pay".
+CREDENTIAL_ID = re.compile(r'[A-Za-z0-9+/]{16,1024}={0,2}')
+COSE_TYPES = {'eddsa': 'ed25519-sk', 'es256': 'ecdsa-sk'}
+DELETE_WARNING = ('PERMANENT: this deletes the SSH key from the security key itself. It cannot be'
+                  ' recovered or imported again; servers and Git hosts that trust it will need a new key.')
 ALGORITHMS = {'ed25519-sk': 'ed25519_sk', 'ecdsa-sk': 'ecdsa_sk'}
 # What follows "ssh:" in a new key's application: a simple name, a host or
 # login@host:port. No slashes or "..", so the name stays a plain filename.
@@ -148,6 +154,11 @@ def key_reference(directory, name):
 
 def private_header(path):
     """OpenSSH exposes the public half even when the private payload is encrypted."""
+    cipher, blob, _ = private_envelope(path)
+    return cipher, blob
+
+
+def private_envelope(path):
     text = read_file(path).decode('ascii')
     body = text.split(PRIVATE_BEGIN, 1)[1].split('-----END', 1)[0]
     data = base64.b64decode(''.join(body.split()), validate=True)
@@ -163,7 +174,31 @@ def private_header(path):
     payload, end = ssh_string(data, at)
     if not payload or end != len(data):
         raise ValueError('Invalid OpenSSH private envelope')
-    return cipher, blob
+    return cipher, blob, payload
+
+
+def key_handle(path):
+    """The credential ID (key handle) in a copied handle without a passphrase,
+    or None when a passphrase encrypts it."""
+    cipher, _, payload = private_envelope(path)
+    if cipher != b'none':
+        return None
+    # Two check integers, the key type, the public part, the application,
+    # the flags byte, then the key handle.
+    if len(payload) < 8 or payload[:4] != payload[4:8]:
+        raise ValueError('Invalid OpenSSH private envelope')
+    name, at = ssh_string(payload, 8)
+    key_type = KEY_TYPES.get(name.decode('ascii', 'replace'))
+    if key_type is None:
+        raise ValueError('Not a security-key handle')
+    if key_type == 'ecdsa-sk':
+        _, at = ssh_string(payload, at)  # the curve
+    _, at = ssh_string(payload, at)  # the public point
+    _, at = ssh_string(payload, at)  # the application
+    handle, _ = ssh_string(payload, at + 1)
+    if not handle:
+        raise ValueError('The copied handle has no key handle')
+    return handle
 
 
 def validate_pair(directory, name):
@@ -381,9 +416,21 @@ def preview(directory, hosts, proposed, main):
 
 
 def save_hosts(directory, hosts, previous, modified=False):
+    plan = review_hosts(directory, hosts, previous, modified)
+    if plan is None:
+        return
+    if plan is False:
+        return False
+    apply_hosts(directory, hosts, previous, plan)
+    return True
+
+
+def review_hosts(directory, hosts, previous, modified=False):
+    """Show the change and ask for it: a plan for apply_hosts(), None when nothing
+    changes, False when declined. Nothing is written."""
     proposed = managed_text(hosts)
     if proposed == previous and not modified:
-        return
+        return None
     main, mode = config_text(directory)
     print(''.join(difflib.unified_diff(previous.splitlines(True)[1:], proposed.splitlines(True)[1:],
                                      fromfile=MANAGED + ' current', tofile=MANAGED + ' proposed')))
@@ -394,6 +441,11 @@ def save_hosts(directory, hosts, previous, modified=False):
     if not accepted:
         print('SSH configuration left unchanged.')
         return False
+    return proposed, main, mode
+
+
+def apply_hosts(directory, hosts, previous, plan):
+    proposed, main, mode = plan
     managed_dir = private_directory(directory / 'omarchy-yubikey')
     if any(entry['minutes'] for entry in hosts.values()):
         private_directory(managed_dir / 'control')
@@ -403,7 +455,6 @@ def save_hosts(directory, hosts, previous, modified=False):
     replace_text(directory / MANAGED, proposed, expected=previous)
     if new_main != main:
         replace_text(directory / 'config', new_main, mode, expected=main)
-    return True
 
 
 def ask_minutes():
@@ -528,7 +579,8 @@ def do_import():
     offer_drop_ins(directory, sorted(present))
 
 
-def do_remove(key_id=None):
+def do_remove(key_id=None, token=False):
+    """Remove a copied handle; with token, first delete its key from the security key."""
     directory = ssh_directory()
     names = resident_keys(directory)
     if not names:
@@ -563,16 +615,28 @@ def do_remove(key_id=None):
     public = validate_pair(directory, name)
     reference = key_reference(directory, name)
     print('Selected ' + public['fingerprint'] + ' (' + public['application'] + ')')
-    print('Only the copied handle is removed. The credential stays on the key. Existing SSH sessions remain open.')
-    if input('Remove ~/.ssh/' + name + ' and its .pub? [y/N] ').strip().lower() not in ('y', 'yes'):
-        return
+    if token:
+        warn_permanent()
+        credential = copy_credential(directory, name, public['blob'])
+    else:
+        print('Only the copied handle is removed. The credential stays on the key. Existing SSH sessions remain open.')
+        if input('Remove ~/.ssh/' + name + ' and its .pub? [y/N] ').strip().lower() not in ('y', 'yes'):
+            return
+    # The SSH configuration is reviewed before anything is deleted, so declining
+    # it, or a managed file that can't be read, leaves the key and its copy alone.
     hosts, previous, modified = load_managed(directory)
     updated = {host: dict(entry, names=[n for n in entry['names'] if n != name]) for host, entry in hosts.items()}
     updated = {host: entry for host, entry in updated.items() if entry['names']}
-    if updated != hosts or modified:
-        if not save_hosts(directory, updated, previous, modified):
-            print('Key files left unchanged.')
+    plan = review_hosts(directory, updated, previous, modified) if updated != hosts or modified else None
+    if plan is False:
+        print('Key files left unchanged.' + (' The key is still on the security key.' if token else ''))
+        return
+    if token:
+        if delete_credential(public['application'], credential) is None:
             return
+        print('The copy ~/.ssh/' + name + ' no longer works; removing it.')
+    if plan:
+        apply_hosts(directory, updated, previous, plan)
     if key_reference(directory, name) != reference or any(
             read_file(directory / (name + suffix)) != data for suffix, data in before.items()):
         raise ValueError('The key files changed during confirmation; no key files were removed')
@@ -689,22 +753,127 @@ def do_create():
     print('Public key, to add to the server or Git host:')
     print(read_file(directory / (name + '.pub')).decode('ascii').strip())
     print('Removing the copy later keeps the credential on the security key;'
-          ' "ykman fido credentials delete" removes it there.')
+          ' "Delete from security key" in the control center removes it there, permanently.')
     offer_drop_ins(directory, installed)
+
+
+def fido_device():
+    """The path of the only connected FIDO2 device."""
+    result = subprocess.run(['fido2-token', '-L'], capture_output=True, text=True, timeout=TOKEN_TIMEOUT)
+    devices = [line.split(':', 1)[0] for line in result.stdout.splitlines() if line.startswith('/dev/')]
+    if result.returncode or len(devices) != 1:
+        raise ValueError('Connect exactly one security key')
+    return devices[0]
+
+
+def token_list(arguments):
+    """Run a fido2-token listing; it asks for the PIN on the terminal itself."""
+    result = subprocess.run(['fido2-token', *arguments], stdout=subprocess.PIPE, text=True, timeout=TOKEN_TIMEOUT)
+    if result.returncode:
+        raise ValueError('fido2-token could not list the credentials (wrong PIN or no resident keys)')
+    return result.stdout
+
+
+def token_credentials(text):
+    """Credentials of a fido2-token -L -k listing: id, user ID and key type."""
+    found = []
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 7 or not fields[0].endswith(':') or not CREDENTIAL_ID.fullmatch(fields[1]):
+            continue
+        try:
+            raw = base64.b64decode(fields[-4], validate=True).rstrip(b'\0')
+        except ValueError:
+            continue
+        try:
+            user = raw.decode('utf-8')
+            binary = not user.isprintable() or any(c in user for c in '/\\') or '..' in user
+        except UnicodeError:
+            user, binary = '', True
+        # ssh-keygen -K names such user IDs by their hexadecimal bytes.
+        found.append({'id': fields[1], 'user': raw.hex() if binary else user, 'binary': binary,
+                      'type': COSE_TYPES.get(fields[-3], 'other')})
+    return found
+
+
+def copy_credential(directory, name, blob):
+    """The credential ID behind the copy ~/.ssh/<name>. A copy with a passphrase
+    hides it, so the resident keys are downloaded into a private folder (PIN,
+    no passphrase) and the one with the copy's public key gives it."""
+    handle = key_handle(directory / name)
+    if handle is not None:
+        return handle
+    print('~/.ssh/' + name + ' has a passphrase: its key is found by downloading the resident keys'
+          ' into a private folder first; ssh-keygen asks for the FIDO2 PIN.')
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    base = runtime if runtime and os.path.isdir(runtime) else None
+    with tempfile.TemporaryDirectory(prefix='omarchy-yubikey-ssh-', dir=base) as temporary:
+        workdir = Path(temporary)
+        if subprocess.call(['ssh-keygen', '-K', '-N', ''], cwd=workdir, timeout=IMPORT_TIMEOUT):
+            raise ValueError('ssh-keygen did not download the resident keys; nothing was deleted')
+        for candidate in resident_keys(workdir):
+            try:
+                if public_key(workdir, candidate)['blob'] == blob:
+                    return key_handle(workdir / candidate)
+            except (OSError, ValueError, UnicodeError):
+                continue
+    raise ValueError('The security key holds no key with the public key of this copy; nothing was deleted')
+
+
+def describe(credential):
+    user = credential['user']
+    if credential['binary']:
+        user = 'binary user ID ' + user[:12] + '…'
+    return (user or '(no user ID)') + ' · ' + credential['type']
+
+
+def delete_credential(app, handle):
+    """Delete the resident key of <app> whose credential ID is <handle> (bytes):
+    the copy's own, never another key with the same application and user ID.
+    The credential, or None if cancelled."""
+    device = fido_device()
+    print('fido2-token asks for the FIDO2 PIN twice: to find this key on the security key and to delete it.')
+    credentials = token_credentials(token_list(['-L', '-k', app, device]))
+    matches = [c for c in credentials if base64.b64decode(c['id']) == handle]
+    if len(matches) != 1:
+        raise ValueError('The key of this copy is not on the connected security key (it was replaced,'
+                         ' or made on another key); nothing was deleted')
+    credential = matches[0]
+    print('Matching key on the security key: ' + app + ' · ' + describe(credential))
+    warn_permanent()
+    phrase = 'DELETE ' + app
+    if input('Type "' + phrase + '" to delete this key from the security key: ').strip() != phrase:
+        print('Cancelled; nothing changed.')
+        return None
+    if subprocess.call(['fido2-token', '-D', '-i', credential['id'], device], timeout=TOKEN_TIMEOUT):
+        raise ValueError('fido2-token did not delete the key; it is still on the security key')
+    print('Deleted the key from the security key.')
+    return credential
+
+
+def warn_permanent():
+    line = '!' * 78
+    print(line)
+    print(DELETE_WARNING)
+    print(line)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['create', 'import', 'remove'])
+    parser.add_argument('operation', choices=['create', 'import', 'remove', 'delete'])
     parser.add_argument('--key-id', help='stable opaque reference returned by status')
     args = parser.parse_args()
-    if args.key_id and (args.operation != 'remove' or not KEY_ID.fullmatch(args.key_id)):
+    if args.key_id and (args.operation not in ('remove', 'delete') or not KEY_ID.fullmatch(args.key_id)):
         parser.error('--key-id requires a removal reference of 64 hexadecimal characters')
+    if args.operation == 'delete' and not args.key_id:
+        parser.error('delete needs the --key-id of the copy whose key to delete')
     if os.geteuid() == 0 or not sys.stdin.isatty() or not sys.stdout.isatty():
         parser.error('Run as the desktop user in an interactive terminal')
     with operation_lock(ssh_directory()):
         if args.operation == 'create':
             do_create()
+        elif args.operation == 'delete':
+            do_remove(args.key_id, token=True)
         elif args.operation == 'import':
             do_import()
         else:

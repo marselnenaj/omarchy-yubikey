@@ -39,10 +39,14 @@ class SshKeyTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def resident(self, directory, name, application='ssh:github.com', byte=1):
+    def resident(self, directory, name, application='ssh:github.com', byte=1, handle=b'H' * 48, cipher=b'none'):
         pub = public(application, byte)
         blob = base64.b64decode(pub.split()[1])
-        envelope = b'openssh-key-v1\0' + wire(b'none') + wire(b'none') + wire(b'') + struct.pack('>I', 1) + wire(blob) + wire(b'synthetic handle')
+        # As ssh-keygen writes it: check integers, key type, public point,
+        # application, flags, key handle (the credential ID), reserved, comment.
+        payload = b'\0\0\0\7' * 2 + wire(pub.split()[0].encode()) + wire(bytes([byte]) * 32) + wire(application.encode())
+        payload += b'\x01' + wire(handle) + wire(b'') + wire(b'comment')
+        envelope = b'openssh-key-v1\0' + wire(cipher) + wire(b'none') + wire(b'') + struct.pack('>I', 1) + wire(blob) + wire(payload)
         (directory / name).write_text(ssh.PRIVATE_BEGIN + '\n' + base64.b64encode(envelope).decode() + '\n-----END-----\n')
         (directory / (name + '.pub')).write_text(pub)
 
@@ -221,7 +225,7 @@ class SshKeyTests(unittest.TestCase):
         name = 'id_ed25519_sk_rk_a'
         self.resident(self.target, name)
         reference = ssh.key_reference(self.target, name)
-        def answer(_):
+        def answer(question):
             (self.target / name).write_text('changed')
             return 'y'
         with patch('builtins.input', side_effect=answer), patch('builtins.print'), self.assertRaises(ValueError):
@@ -417,6 +421,147 @@ class SshKeyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.create(['', '', '', '', '', '', 'y'], result=1)
         self.assertEqual(list(self.target.iterdir()), [])
+
+
+    @staticmethod
+    def creds(*users):
+        lines = []
+        for i, (user, cose) in enumerate(users):
+            uid = base64.b64encode(user.encode().ljust(32, b'\0') if user else b'\0' * 32).decode()
+            lines.append('%02d: %s (null) %s %s uvopt nopay' % (i, chr(ord('D') + i) * 64, uid, cose))
+        return '\n'.join(lines) + '\n'
+
+    @staticmethod
+    def listing(*handles, user='work'):
+        uid = base64.b64encode(user.encode().ljust(32, b'\0')).decode()
+        return ''.join('%02d: %s (null) %s eddsa uvopt nopay\n' % (i, base64.b64encode(h).decode(), uid)
+                       for i, h in enumerate(handles))
+
+    def test_token_listings_are_parsed_from_the_right(self):
+        found = ssh.token_credentials(self.creds(('work', 'eddsa'), ('', 'es256')))
+        self.assertEqual([(c['user'], c['type']) for c in found], [('work', 'ed25519-sk'), ('', 'ecdsa-sk')])
+        self.assertEqual(found[0]['id'], 'D' * 64)
+        spaced = '00: ' + 'E' * 64 + ' Display Name With Spaces ' + base64.b64encode(b'bob').decode() + ' eddsa uvopt nopay\n'
+        self.assertEqual(ssh.token_credentials(spaced)[0]['user'], 'bob')
+        self.assertEqual(ssh.token_credentials('garbage\n00: not-base64! x y z w v\n'), [])
+
+    def test_key_handle_is_read_from_a_copy_without_passphrase(self):
+        self.resident(self.target, 'id_ed25519_sk_rk_x', handle=b'K' * 48)
+        self.assertEqual(ssh.key_handle(self.target / 'id_ed25519_sk_rk_x'), b'K' * 48)
+        self.resident(self.target, 'id_ed25519_sk_rk_y', cipher=b'aes256-ctr')
+        self.assertIsNone(ssh.key_handle(self.target / 'id_ed25519_sk_rk_y'))
+
+    def remove_with(self, name, answers, creds, delete_result=0, token=True, download=None):
+        reference = ssh.key_reference(self.target, name)
+        real_run = subprocess.run
+        def run(command, **options):
+            if command == ['fido2-token', '-L']:
+                return subprocess.CompletedProcess(command, 0, '/dev/hidraw9: vendor=0x1050 (Yubico)\n')
+            if command[1:3] == ['-L', '-k']:
+                return subprocess.CompletedProcess(command, 0, creds)
+            if command[0] == 'ssh':
+                return real_run(command, **options)
+            raise AssertionError(command)
+        calls = []
+        def call(command, timeout, cwd=None):
+            calls.append(command)
+            if command[:2] == ['ssh-keygen', '-K']:
+                for args in download or []:
+                    self.resident(Path(cwd), *args)
+                return 0
+            return delete_result
+        with patch.object(ssh.subprocess, 'run', side_effect=run), patch.object(ssh.subprocess, 'call', side_effect=call), \
+                patch('builtins.input', side_effect=answers), patch('builtins.print') as printed:
+            ssh.do_remove(reference, token=token)
+        return calls, ' '.join(str(c) for c in printed.call_args_list)
+
+    def deletes(self, handle):
+        return ['fido2-token', '-D', '-i', base64.b64encode(handle).decode(), '/dev/hidraw9']
+
+    def test_remove_keeps_the_key_and_delete_removes_it_from_the_token(self):
+        name = 'id_ed25519_sk_rk_github.com_work'
+        self.resident(self.target, name)
+        # Remove copy: no fido2-token, one y/N, the key stays on the security key.
+        calls, output = self.remove_with(name, ['y'], '', token=False)
+        self.assertEqual(calls, [])
+        self.assertFalse((self.target / name).exists())
+        self.assertNotIn('PERMANENT', output)
+        # Delete: the credential whose ID is the copy's key handle, after the typed phrase.
+        self.resident(self.target, name, handle=b'M' * 48)
+        calls, output = self.remove_with(name, ['DELETE ssh:github.com'], self.listing(b'O' * 48, b'M' * 48))
+        self.assertEqual(calls, [self.deletes(b'M' * 48)])
+        self.assertIn('Matching key', output)
+        self.assertIn('PERMANENT', output)
+        self.assertFalse((self.target / name).exists())
+
+    def test_delete_never_takes_another_key_with_the_same_application_and_user_id(self):
+        # A copy kept after its key was replaced (or made on another security
+        # key): same application and user ID on the token, another credential.
+        name = 'id_ed25519_sk_rk_github.com_work'
+        self.resident(self.target, name, handle=b'O' * 48)
+        with self.assertRaises(ValueError) as raised:
+            self.remove_with(name, ['DELETE ssh:github.com'], self.listing(b'N' * 48))
+        self.assertIn('nothing was deleted', str(raised.exception))
+        self.assertTrue((self.target / name).exists())
+
+    def test_delete_finds_the_key_of_a_copy_with_a_passphrase_by_its_public_key(self):
+        name = 'id_ed25519_sk_rk_github.com_work'
+        self.resident(self.target, name, byte=3, cipher=b'aes256-ctr')
+        # The download holds another key too; only the one with the copy's public key counts.
+        download = [('id_ed25519_sk_rk_github.com_home', 'ssh:github.com', 4, b'X' * 48),
+                    (name, 'ssh:github.com', 3, b'M' * 48)]
+        calls, output = self.remove_with(name, ['DELETE ssh:github.com'], self.listing(b'X' * 48, b'M' * 48),
+                                         download=download)
+        self.assertEqual(calls, [['ssh-keygen', '-K', '-N', ''], self.deletes(b'M' * 48)])
+        self.assertIn('has a passphrase', output)
+        self.assertFalse((self.target / name).exists())
+        # Its key is no longer on the security key: nothing is deleted.
+        self.resident(self.target, name, byte=3, cipher=b'aes256-ctr')
+        with self.assertRaises(ValueError):
+            self.remove_with(name, [], '', download=download[:1])
+        self.assertTrue((self.target / name).exists())
+
+    def test_remove_permanent_cancelled_or_failed_keeps_the_copy(self):
+        name = 'id_ed25519_sk_rk_github.com_work'
+        self.resident(self.target, name, handle=b'M' * 48)
+        creds = self.listing(b'M' * 48)
+        calls, output = self.remove_with(name, ['delete'], creds)
+        self.assertEqual(calls, [])
+        self.assertTrue((self.target / name).exists())
+        with self.assertRaises(ValueError):
+            self.remove_with(name, ['DELETE ssh:github.com'], creds, delete_result=1)
+        self.assertTrue((self.target / name).exists())
+        calls, output = self.remove_with(name, [''], creds, token=False)
+        self.assertEqual(calls, [])
+        self.assertTrue((self.target / name).exists())
+
+    def test_delete_asks_about_the_ssh_configuration_before_deleting(self):
+        name = 'id_ed25519_sk_rk_github.com_work'
+        self.resident(self.target, name, handle=b'M' * 48)
+        self.configure(name)
+        managed = (self.target / ssh.MANAGED).read_text()
+        creds = self.listing(b'M' * 48)
+        # Declined: the key stays on the security key, the copy and its host entry too.
+        calls, output = self.remove_with(name, ['n'], creds)
+        self.assertEqual(calls, [])
+        self.assertIn('still on the security key', output)
+        self.assertTrue((self.target / name).exists())
+        self.assertEqual((self.target / ssh.MANAGED).read_text(), managed)
+        # Accepted, then the typed phrase cancels: still nothing written.
+        calls, output = self.remove_with(name, ['y', 'no'], creds)
+        self.assertEqual(calls, [])
+        self.assertEqual((self.target / ssh.MANAGED).read_text(), managed)
+        # Accepted and confirmed: deleted, then the entry and the copy go without another question.
+        calls, output = self.remove_with(name, ['y', 'DELETE ssh:github.com'], creds)
+        self.assertEqual(calls, [self.deletes(b'M' * 48)])
+        self.assertNotIn(name, (self.target / ssh.MANAGED).read_text())
+        self.assertFalse((self.target / name).exists())
+        # A managed file that can't be read stops before anything is deleted.
+        self.resident(self.target, name, handle=b'M' * 48)
+        (self.target / ssh.MANAGED).write_text('not managed\n')
+        with self.assertRaises(ValueError):
+            self.remove_with(name, ['DELETE ssh:github.com'], creds)
+        self.assertTrue((self.target / name).exists())
 
 if __name__ == '__main__':
     unittest.main()
