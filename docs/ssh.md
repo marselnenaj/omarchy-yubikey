@@ -32,11 +32,14 @@ rejected. Existing directory permissions are not silently relaxed or changed.
 | User ID | a random 16-character hexadecimal value; type your own, or `-` for none. Without a user ID, `ssh-keygen` sends 32 zero bytes, so every such key for the same application replaces the previous one | `-O user=<value>` |
 | PIN for every use | yes | `-O verify-required` |
 | Touch for every use | yes; no adds `-O no-touch-required`, which `sshd` refuses unless `authorized_keys` allows it | `-O no-touch-required` |
-| Comment | `<user>@<hostname>` | `-C` |
+| Comment | `<user>@<hostname>`; plain ASCII, up to 128 characters | `-C` |
 
 The application and user ID accept letters, digits and `. _ - @` (the application
 also `:`), without slashes or `..`, so the handle gets the same filename that
 **Import SSH keys** would give it (`id_<type>_rk[_<application>][_<user ID>]`).
+A name that would end in `.pub` is refused, since import skips such files. These
+checks run before `ssh-keygen`, so a refused answer never leaves a key on the
+security key without its copy.
 `ssh-keygen` itself asks for the FIDO2 PIN, a touch and an optional passphrase for
 the handle file.
 

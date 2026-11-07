@@ -662,9 +662,16 @@ def ask_options():
     touch = ask_yes('Require a touch for every use?', True)
     if not touch:
         print('sshd refuses signatures without a touch unless authorized_keys allows "no-touch-required".')
-    comment = ask('Comment', getpass.getuser() + '@' + socket.gethostname())
-    if len(comment) > 128 or not comment.isprintable():
-        raise ValueError('The comment must be printable and at most 128 characters')
+    # Checked before the key is made: a failure afterwards would leave the new
+    # key on the security key without a copy in ~/.ssh.
+    if handle_name(algorithm, app, user).endswith('.pub'):
+        raise ValueError('The copy would be named like a public key (ending in ".pub");'
+                         ' choose another user ID or application')
+    default = ''.join(c for c in getpass.getuser() + '@' + socket.gethostname() if ' ' < c <= '~')
+    comment = ask('Comment', default)
+    # The .pub file carries the comment and is read as ASCII.
+    if len(comment) > 128 or not all(' ' <= c <= '~' for c in comment):
+        raise ValueError('Use plain ASCII in the comment, at most 128 characters')
     return algorithm, app, user, verify, touch, comment
 
 
