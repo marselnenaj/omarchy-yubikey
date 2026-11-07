@@ -3,8 +3,8 @@
 
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use zbus::blocking::{Connection, Proxy};
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value};
+use zbus::{block_on, Connection, Proxy};
+use zbus::{ObjectPath, OwnedObjectPath, OwnedVariant, Variant};
 use zeroize::Zeroizing;
 
 const DEST: &str = "org.freedesktop.secrets";
@@ -33,15 +33,38 @@ pub struct Item {
 
 type Secret = (OwnedObjectPath, Vec<u8>, Vec<u8>, String);
 
+// zbus 6 has an async API. Keep the CLI synchronous using its supported
+// block_on entry point; each bus operation completes before returning.
+struct BlockingProxy<'a>(Proxy<'a>);
+
+impl BlockingProxy<'_> {
+    fn call<B, R>(&self, method: &str, body: &B) -> zbus::Result<R>
+    where
+        B: serde::Serialize + zbus::DynamicType,
+        R: for<'d> zbus::wire::DynamicDeserialize<'d>,
+    {
+        block_on(self.0.call(method, body))
+    }
+
+    fn get_property<T>(&self, name: &str) -> zbus::Result<T>
+    where
+        T: serde::de::DeserializeOwned + zbus::Type,
+    {
+        block_on(self.0.get_property(name))
+    }
+}
+
 impl Keyring {
     /// Connect to the user session bus; service calls can activate the keyring daemon.
     pub fn connect() -> Result<Self> {
-        let conn = Connection::session().context(tr!("Could not connect to the session bus"))?;
+        let conn = block_on(Connection::session()).context(tr!("Could not connect to the session bus"))?;
         Ok(Keyring { conn })
     }
 
-    fn proxy<'a>(&'a self, path: &'a str, iface: &'a str) -> Result<Proxy<'a>> {
-        Proxy::new(&self.conn, DEST, path, iface).context(tr!("Could not connect to Secret Service"))
+    fn proxy<'a>(&'a self, path: &'a str, iface: &'a str) -> Result<BlockingProxy<'a>> {
+        block_on(Proxy::new(&self.conn, DEST, path, iface))
+            .map(BlockingProxy)
+            .context(tr!("Could not connect to Secret Service"))
     }
 
     /// Resolve the default collection used by browsers to store secrets.
@@ -85,9 +108,9 @@ impl Keyring {
     /// Use a plain Secret Service session: secrets are not encrypted on the
     /// session bus and rely on its per-user access controls.
     fn with_session<T>(&self, run: impl FnOnce(&OwnedObjectPath) -> Result<T>) -> Result<T> {
-        let (_, session): (OwnedValue, OwnedObjectPath) = self
+        let (_, session): (OwnedVariant, OwnedObjectPath) = self
             .proxy(SERVICE_PATH, SERVICE)?
-            .call("OpenSession", &("plain", Value::from("")))
+            .call("OpenSession", &("plain", Variant::from("")))
             .context(tr!("OpenSession failed"))?;
         let result = run(&session);
         let _: zbus::Result<()> = self.proxy(session.as_str(), "org.freedesktop.Secret.Session")?.call("Close", &());
@@ -111,7 +134,7 @@ impl Keyring {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
-        let secrets: HashMap<OwnedObjectPath, Secret> = self.with_session(|session| {
+        let mut secrets: HashMap<OwnedObjectPath, Secret> = self.with_session(|session| {
             Ok(self
                 .proxy(SERVICE_PATH, SERVICE)?
                 .call("GetSecrets", &(&paths, ObjectPath::from(session)))
@@ -121,7 +144,7 @@ impl Keyring {
         for path in paths {
             let item = self.proxy(path.as_str(), ITEM)?;
             let (_, _, value, content_type) =
-                secrets.get(&path).with_context(|| tr!("No secret returned for %1", path.as_str()))?.clone();
+                secrets.remove(&path).with_context(|| tr!("No secret returned for %1", path.as_str()))?;
             items.push(Item {
                 label: item.get_property("Label")?,
                 attributes: item.get_property("Attributes")?,
@@ -151,8 +174,8 @@ impl Keyring {
     pub fn add(&self, collection: &Collection, item: &Item) -> Result<()> {
         self.with_session(|session| {
             let properties = HashMap::from([
-                ("org.freedesktop.Secret.Item.Label", Value::from(item.label.as_str())),
-                ("org.freedesktop.Secret.Item.Attributes", Value::from(item.attributes.clone())),
+                ("org.freedesktop.Secret.Item.Label", Variant::from(item.label.as_str())),
+                ("org.freedesktop.Secret.Item.Attributes", Variant::from(item.attributes.clone())),
             ]);
             let secret =
                 (ObjectPath::from(session), Vec::<u8>::new(), item.secret.as_slice(), item.content_type.as_str());
@@ -179,3 +202,7 @@ impl Keyring {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "keyring_tests.rs"]
+mod tests;

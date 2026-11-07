@@ -16,7 +16,7 @@ def export(role, output):
     source = ROOT / 'plugins' / f'yubikey.{role}'
     manifest = json.loads((source / 'manifest.json').read_text())
     version = manifest['version']
-    tag = 'v' + version
+    tag = 'v' + json.loads((ROOT / 'manifest.json').read_text())['version']
     name = f'omarchy-yubikey-{role}'
     destination = output / name
     if destination.exists():

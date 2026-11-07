@@ -17,16 +17,20 @@ catalogs do not have a translation.
 ## Language selection
 
 The desktop plugins follow **Setup > Language**, including live changes while
-open. Arabic, Hebrew, Persian and Urdu use right-to-left layouts. Native
-`Commons.Translations` is used on newer shells; a compatibility loader reads the
-same per-account language file on older hosts.
+open. Arabic, Hebrew, Persian and Urdu use right-to-left layouts. The bundled
+loader reads the same per-account language file on every supported shell; text,
+digits and layout share one resolved language. It does not layer the native
+loader over the locale fallback, which could replace translated text with English.
 
 The command-line tools read the account's Omarchy language selection from
 `$XDG_CONFIG_HOME/omarchy/language` (normally `~/.config/omarchy/language`). Without
 a selection, they use `LC_ALL`, `LC_MESSAGES`, `LANGUAGE`, then `LANG`. Unknown
 languages fall back to English. Regional locales such as `de_AT.UTF-8` resolve
 to their supported language; `pt_BR` and `zh_TW` retain their regional catalogs.
-Missing entries fall back to the base language and then English.
+Missing entries fall back to the base language and then English. With no selected
+language and a `C` or `C.UTF-8` message locale, English is expected. Select a
+desktop language with **Setup > Language** (`omarchy language de`, for example).
+`OMARCHY_YUBIKEY_LANGUAGE` explicitly overrides both the account file and locales.
 
 For an explicit helper override:
 

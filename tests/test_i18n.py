@@ -59,6 +59,8 @@ class TranslationTests(unittest.TestCase):
             for role in ['lock', 'polkit']:
                 exported = Path(directory) / ('omarchy-yubikey-' + role)
                 provenance = json.loads((exported / 'SOURCE.json').read_text())
+                suite = json.loads((ROOT / 'manifest.json').read_text())
+                self.assertEqual(provenance['ref'], 'v' + suite['version'])
                 for code in registry:
                     self.assertIn('i18n/' + code + '.json', provenance['sha256'])
                 for filename, digest in provenance['sha256'].items():

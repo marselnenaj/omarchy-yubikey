@@ -34,8 +34,9 @@ maintenance notices. Actions use immutable commit references. The audit binary
 and source secret scanner use fixed versions and verified SHA-256 downloads;
 their versions/checksums need deliberate maintenance as well.
 
-At 0.5.1 the audit reports maintenance notices RUSTSEC-2026-0370, -0371 and -0372
-for the zbus 5 serialization/name dependencies. Upstream merged these crates into
-zbus 6; migrating that API is separate work from the build-output fix. No advisory
-is suppressed. These checks detect known issues and do not replace code review,
-hardware validation or prompt handling of new reports.
+Version 0.6.0 migrates the helper to zbus 6 and removes the retired zbus 5
+serialization/name dependencies behind RUSTSEC-2026-0370, -0371 and -0372.
+HKDF and SHA-2 are updated together to compatible digest APIs, with legacy
+store decryption and key zeroization checked. No advisory is suppressed.
+These checks detect known issues and do not replace code review, hardware
+validation or prompt handling of new reports.

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.6.0 — 2026-11-08
+
+- Use one language resolver for lock/Polkit text, digits and layout. Prevent a
+  native English catalog from overriding the locale fallback. Add native tests
+  for automatic, regional, explicit and live per-account language selection.
+- Pair HKDF 0.13 with SHA-2 0.11; migrate the synchronous helper to zbus 6 through
+  its supported `block_on` entry point. Exercise Secret Service on a private
+  synthetic D-Bus, including session closure on wrong-password errors. Move
+  secrets out of reply maps instead of cloning their plaintext buffers.
+- Update OpenSSL to 0.10.82. Preserve the patched native dependencies and cipher
+  zeroization; verify legacy encrypted stores without a migration.
+- Release standalone lock/Polkit 0.3.1 and helper 0.2.1. Export provenance points
+  to the suite tag independently of the standalone component version.
+
 - OpenPGP card: the import button reads **Update key** once the key is imported,
   since importing again refreshes the certificate and card links, and is
   highlighted when the key is not linked, expired, revoked or disabled.

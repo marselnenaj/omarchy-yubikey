@@ -2,11 +2,14 @@
   "schemaVersion": 1,
   "id": "yubikey.setup",
   "name": "Omarchy YubiKey",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "author": "marselnenaj",
   "license": "MIT",
   "description": "Set up and manage security keys, sudo, desktop authentication, GNOME Keyring and optional LUKS enrollment.",
-  "kinds": ["overlay", "bar-widget"],
+  "kinds": [
+    "overlay",
+    "bar-widget"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "overlay": "ControlCenter.qml",
