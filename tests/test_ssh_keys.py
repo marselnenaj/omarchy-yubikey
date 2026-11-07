@@ -382,6 +382,20 @@ class SshKeyTests(unittest.TestCase):
                 self.create(answers + ['y'] * 6)
         self.assertEqual(list(self.target.iterdir()), [])
 
+    def test_create_checks_names_and_comment_before_the_key_is_made(self):
+        # Each would fail only after ssh-keygen, leaving the key on the security
+        # key without a copy: an accented comment (.pub read as ASCII) and a
+        # handle named like a public half, which import skips.
+        for answers in (['', 'github.com', 'work', '', '', 'café'], ['', 'github.com', 'work.pub'],
+                        ['', 'x.pub', '-']):
+            with self.assertRaises(ValueError):
+                calls, _, _ = self.create(answers + ['y'] * 6)
+        self.assertEqual(list(self.target.iterdir()), [])
+        with patch.object(ssh.subprocess, 'call') as call, patch('builtins.input', side_effect=['', 'github.com', 'work.pub', '', '']):
+            with self.assertRaises(ValueError):
+                ssh.do_create()
+        call.assert_not_called()
+
     def test_create_cancelled_at_confirmation_runs_nothing(self):
         calls, offered, output = self.create(['', '', '', '', '', '', ''])
         self.assertEqual(calls, [])
