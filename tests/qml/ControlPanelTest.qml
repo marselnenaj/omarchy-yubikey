@@ -105,6 +105,9 @@ TestCase {
     verify(sshCard.visible)
     verify(findChild(panel,"sshKeys").visible)
     // Each row: one button removes the copy, the other deletes the key itself.
+    compare(panel.sshKeyTitle({application:"ssh:github.com", user:"work"}), "ssh:github.com · work")
+    compare(panel.sshKeyTitle({application:"ssh:github.com", user:""}), "ssh:github.com")
+    compare(panel.sshKeyTitle({application:"ssh:", user:"0102030405060708090a0b0c0d0e0f10"}), "ssh: · 0102030405060708…")
     var remove = findChild(panel,"sshRemove0")
     var deleteKey = findChild(panel,"sshDelete0")
     verify(remove !== null && deleteKey !== null)

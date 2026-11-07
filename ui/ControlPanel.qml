@@ -23,7 +23,14 @@ Item {
   readonly property int sshCount: snapshot && snapshot.ssh ? snapshot.ssh.count : 0
   readonly property string sshDeleteWarning: strings.t("This deletes the key from the security key itself, permanently. It cannot be recovered or imported again; servers and Git hosts that trust it will need a new key.")
   readonly property var sshKeys: snapshot && snapshot.ssh && snapshot.ssh.keys ? snapshot.ssh.keys : []
-  // Public identity only; filenames and credential handles stay in the terminal.
+  // Public identity and user ID; filenames and credential handles stay in the terminal.
+  // The user ID tells apart keys for the same application; long (binary, hex)
+  // ones are shortened.
+  function sshKeyTitle(key) {
+    var title = key.application || strings.t("SSH key")
+    if (!key.user) return title
+    return title + " · " + (key.user.length > 24 ? key.user.slice(0, 16) + "…" : key.user)
+  }
   function sshKeyDetails(key) {
     var parts = [key.type === "ed25519-sk" ? "Ed25519-SK" : key.type === "ecdsa-sk" ? "ECDSA-SK" : strings.t("Other")]
     parts.push(key.passphrase ? strings.t("passphrase") : strings.t("no passphrase"))
@@ -344,7 +351,7 @@ Item {
                         id: keyContent
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(14) }
                         spacing: Style.space(6)
-                        Text { width: parent.width; text: modelData.application || strings.t("SSH key"); color: Commons.Color.foreground; font { family: Style.font.family; pixelSize: Style.font.body } textFormat: Text.PlainText; elide: Text.ElideRight }
+                        Text { width: parent.width; text: root.sshKeyTitle(modelData); color: Commons.Color.foreground; font { family: Style.font.family; pixelSize: Style.font.body } textFormat: Text.PlainText; elide: Text.ElideRight }
                         Text { width: parent.width; text: root.sshKeyDetails(modelData); color: Util.alpha(Commons.Color.foreground, 0.73); font { family: Style.font.family; pixelSize: Style.font.caption } textFormat: Text.PlainText; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
                         TextEdit { width: parent.width; text: modelData.fingerprint; readOnly: true; selectByMouse: true; wrapMode: TextEdit.WrapAnywhere; color: Commons.Color.accent; font { family: Style.font.family; pixelSize: Style.font.caption } textFormat: TextEdit.PlainText }
                         // One action per button: the copy, or the key on the security key.
