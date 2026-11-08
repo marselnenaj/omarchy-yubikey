@@ -13,6 +13,14 @@ Ui.Button {
   foreground: primary ? Commons.Color.background : Commons.Color.foreground
   background: primary ? Commons.Color.accent : "transparent"
   accent: primary ? Commons.Color.foreground : Commons.Color.accent
+  // The host's translucent hover/focus/press fills assume ordinary foreground
+  // text. Keep the solid accent behind the primary button's inverse text.
+  // Leaving this state restores the host binding for secondary buttons.
+  states: State {
+    name: "primary-fill"
+    when: root.primary
+    PropertyChanges { target: root; color: root.background }
+  }
   opacity: enabled ? 1 : 0.42
   Accessible.role: Accessible.Button
   Accessible.name: text

@@ -23,6 +23,7 @@ On a compatible Omarchy installation, also run:
 
 ```sh
 python3 scripts/test-language-ui.py
+# Includes hover, press and keyboard-focus contrast in dark/light palettes.
 python3 scripts/test-control-ui.py --language de
 python3 scripts/test-control-ui.py --language pt-BR --width 640
 omarchy plugin validate plugins/yubikey.lock
