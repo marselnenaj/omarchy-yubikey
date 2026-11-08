@@ -635,6 +635,10 @@ def do_remove(key_id=None, token=False):
     before = {suffix: read_file(directory / (name + suffix)) for suffix in ('', '.pub')}
     public = validate_pair(directory, name)
     reference = key_reference(directory, name)
+    def check_copy_unchanged():
+        if key_reference(directory, name) != reference or any(
+                read_file(directory / (name + suffix)) != data for suffix, data in before.items()):
+            raise ValueError('The key files changed during confirmation; no key files were removed')
     print('Selected ' + public['fingerprint'] + ' (' + public['application'] + ')')
     if token:
         warn_permanent()
@@ -653,14 +657,13 @@ def do_remove(key_id=None, token=False):
         print('Key files left unchanged.' + (' The key is still on the security key.' if token else ''))
         return
     if token:
-        if delete_credential(public['application'], credential) is None:
+        if delete_credential(public['application'], credential, before_delete=check_copy_unchanged) is None:
             return
         print('The copy ~/.ssh/' + name + ' no longer works; removing it.')
+    check_copy_unchanged()
     if plan:
         apply_hosts(directory, updated, previous, plan)
-    if key_reference(directory, name) != reference or any(
-            read_file(directory / (name + suffix)) != data for suffix, data in before.items()):
-        raise ValueError('The key files changed during confirmation; no key files were removed')
+    check_copy_unchanged()
     for suffix in ('', '.pub'):
         (directory / (name + suffix)).unlink()
     print('Removed ~/.ssh/' + name)
@@ -848,9 +851,10 @@ def describe(credential):
     return (user or '(no user ID)') + ' · ' + credential['type']
 
 
-def delete_credential(app, handle):
+def delete_credential(app, handle, *, before_delete):
     """Delete the resident key of <app> whose credential ID is <handle> (bytes):
     the copy's own, never another key with the same application and user ID.
+    Revalidate the selected copy after confirmation, just before the command.
     The credential, or None if cancelled."""
     device = fido_device()
     print('fido2-token asks for the FIDO2 PIN twice: to find this key on the security key and to delete it.')
@@ -866,6 +870,9 @@ def delete_credential(app, handle):
     if input('Type "' + phrase + '" to delete this key from the security key: ').strip() != phrase:
         print('Cancelled; nothing changed.')
         return None
+    # Confirmation can remain open while another SSH tool replaces the copy.
+    # A stale selection must stop before the irreversible device operation.
+    before_delete()
     if subprocess.call(['fido2-token', '-D', '-i', credential['id'], device], timeout=TOKEN_TIMEOUT):
         raise ValueError('fido2-token did not delete the key; it is still on the security key')
     print('Deleted the key from the security key.')

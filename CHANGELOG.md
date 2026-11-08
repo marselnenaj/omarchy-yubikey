@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.6.1 — 2026-11-08
+
+- Recheck the selected SSH copy's stable identity and both saved file contents
+  after the typed permanent-deletion confirmation and before `fido2-token -D`.
+  Changed, missing or symlinked copies stop without hardware deletion or SSH
+  configuration changes. Retain the later checks before local cleanup.
+- Add a regression test that changes the private handle, public file or complete
+  pair, removes the handle or replaces it with a symlink during confirmation.
+  Every case proves that the hardware deletion command is never invoked.
+
 ## 0.6.0 — 2026-11-08
 
 - Use one language resolver for lock/Polkit text, digits and layout. Prevent a
