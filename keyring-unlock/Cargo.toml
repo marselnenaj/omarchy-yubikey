@@ -1,6 +1,6 @@
 [package]
 name = "keyring-unlock"
-version = "0.2.0"
+version = "0.2.1"
 description = "Unlock GNOME Keyring after autologin with a YubiKey touch"
 edition.workspace = true
 license.workspace = true
@@ -16,11 +16,11 @@ chrono = { version = "0.4.40", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive", "string"] }
 fido2-rs = "0.6"
 getrandom = "0.4"
-hkdf = "0.12"
+hkdf = "0.13"
 libfido2-sys = "0.5"
 rpassword = "7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-zbus = "5"
+sha2 = "0.11"
+zbus = "6"
 zeroize = "1"

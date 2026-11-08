@@ -19,8 +19,8 @@ FIXTURE = {'supported': True, 'connected': 1, 'enrollment': {'count': 2, 'state'
                                  for role in ('sign', 'encrypt', 'authenticate')},
                        'key': {'algorithm': 'ed25519', 'sign': True, 'encrypt': True, 'authenticate': True,
                                'expires': '2030-01-01', 'expired': False, 'uids': 2, 'fingerprint': 'A' * 64, 'uid': 'Synthetic User'}},
-           'ssh': {'count': 2, 'keys': [{'id': 'a' * 64, 'type': 'ed25519-sk', 'passphrase': True, 'host': True, 'application': 'ssh:github.com', 'fingerprint': 'SHA256:' + 'A' * 43},
-                                        {'id': 'b' * 64, 'type': 'ecdsa-sk', 'passphrase': False, 'host': False, 'application': 'ssh:', 'fingerprint': 'SHA256:' + 'B' * 43}]},
+           'ssh': {'count': 2, 'keys': [{'id': 'a' * 64, 'type': 'ed25519-sk', 'passphrase': True, 'host': True, 'application': 'ssh:github.com', 'fingerprint': 'SHA256:' + 'A' * 43, 'user': 'work'},
+                                        {'id': 'b' * 64, 'type': 'ecdsa-sk', 'passphrase': False, 'host': False, 'application': 'ssh:', 'fingerprint': 'SHA256:' + 'B' * 43, 'user': '0102030405060708090a0b0c0d0e0f10'}]},
            'operation': {}, 'diskReady': True}
 
 
@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--screenshots', type=Path)
     parser.add_argument('--width', type=int, default=1280)
     parser.add_argument('--height', type=int, default=900)
-    parser.add_argument('--language', default='en', choices=['en', 'de', 'ar'])
+    parser.add_argument('--language', default='en', choices=['en', 'de', 'pt-BR', 'ar'])
     parser.add_argument('--shell-root', type=Path, default=Path('/usr/share/omarchy/shell'))
     args = parser.parse_args()
     if not shutil.which('qs') or not (args.shell_root / 'Commons').is_dir():

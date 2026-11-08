@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+## 0.6.0 — 2026-11-08
+
+- Use one language resolver for lock/Polkit text, digits and layout. Prevent a
+  native English catalog from overriding the locale fallback. Add native tests
+  for automatic, regional, explicit and live per-account language selection.
+- Pair HKDF 0.13 with SHA-2 0.11; migrate the synchronous helper to zbus 6 through
+  its supported `block_on` entry point. Exercise Secret Service on a private
+  synthetic D-Bus, including session closure on wrong-password errors. Move
+  secrets out of reply maps instead of cloning their plaintext buffers.
+- Update OpenSSL to 0.10.82. Preserve the patched native dependencies and cipher
+  zeroization; verify legacy encrypted stores without a migration.
+- Release standalone lock/Polkit 0.3.1 and helper 0.2.1. Export provenance points
+  to the suite tag independently of the standalone component version.
+
+- OpenPGP card: the import button reads **Update key** once the key is imported,
+  since importing again refreshes the certificate and card links, and is
+  highlighted when the key is not linked, expired, revoked or disabled.
+- Remove resident SSH keys from each key's row with two separate buttons:
+  **Remove copy** deletes only the file in `~/.ssh` and keeps the key on the
+  security key; **Delete from security key**, in the urgent colour, deletes the
+  key itself permanently, after a warning in the confirmation dialog and the
+  terminal and a typed `DELETE <application>`, then removes the copy. Only the
+  credential of that very copy is deleted, found by the key handle in the copy
+  (for a copy with a passphrase, by downloading the resident keys first): a copy
+  of a key replaced since, or made on another security key, deletes nothing.
+  The Git-host change is reviewed before the key is deleted.
+
+- Create resident SSH keys from the control center. **Create SSH key** opens a
+  terminal wizard for the algorithm, application, user ID (a random one by
+  default, so keys for the same application do not replace each other), PIN
+  and touch requirements and comment, shows the `ssh-keygen` command before running it,
+  installs the handle like an imported one, prints the public key and offers the
+  Git-host configuration.
+- Show each resident SSH key's user ID next to its application, to tell apart
+  keys made for the same application. Long (binary, hexadecimal) user IDs are
+  shortened; filenames and credential handles stay out of the window.
+
 - Fix translations of the standalone lock and Polkit plugins on Omarchy 4.5,
   whose `qs.Commons` exports its own `Translations` type. Their unqualified
   `Translations` resolved to it instead of the bundled loader, as the setup
@@ -13,6 +50,10 @@
   tests already do. They matched English messages that `tr()` translated into
   the developer's own Omarchy language, so four of them failed on any non-English
   desktop.
+- Translate the setup window into Brazilian Portuguese. The window now loads
+  `i18n/control/<language>.json` for any language that has a catalog, then the
+  base language's, instead of only German; other languages still fall back to
+  English.
 
 ## 0.5.2 — 2026-11-06
 

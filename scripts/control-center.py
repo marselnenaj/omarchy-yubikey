@@ -46,7 +46,9 @@ ACTIONS = {
     'openpgp-import': 'Import the OpenPGP key stored on the security key',
     'openpgp-trust': 'Trust the OpenPGP key of the security key ultimately',
     'openpgp-remove': 'Remove the OpenPGP key of the security key from the keyring',
+    'ssh-create': 'Create a resident SSH key on the security key',
     'ssh-import': 'Copy the resident SSH keys of the security key into ~/.ssh',
+    'ssh-delete': 'Permanently delete one resident SSH key from the security key',
     'ssh-remove': 'Remove one copied resident SSH key from ~/.ssh',
     'backups': 'List system PAM backup IDs',
     'rollback': 'Restore the selected PAM backup',
@@ -100,7 +102,7 @@ def openpgp_status(query, available):
 
 
 def ssh_status():
-    """Public SSH identities and stable references, never filenames or handles."""
+    """Public SSH identities, user IDs and stable references, never filenames or handles."""
     try:
         spec = importlib.util.spec_from_file_location('manage_ssh', SOURCE / 'scripts/manage-ssh.py')
         module = importlib.util.module_from_spec(spec)
@@ -114,12 +116,13 @@ def ssh_status():
     for key in (keys if isinstance(keys, list) else [])[:SSH_KEY_LIMIT]:
         if not isinstance(key, dict) or not isinstance(key.get('id'), str) or not re.fullmatch(r'[0-9a-f]{64}', key['id']):
             continue
-        fingerprint, application = key.get('fingerprint'), key.get('application')
+        fingerprint, application, user = key.get('fingerprint'), key.get('application'), key.get('user')
         result['keys'].append({
             'id': key['id'],
             'type': key.get('type') if key.get('type') in ('ed25519-sk', 'ecdsa-sk') else 'other',
             'fingerprint': fingerprint if isinstance(fingerprint, str) and re.fullmatch(r'SHA256:[A-Za-z0-9+/]{43}', fingerprint) else '',
             'application': application if isinstance(application, str) and re.fullmatch(r'ssh:[\x21-\x7e]{0,252}', application) else '',
+            'user': user if isinstance(user, str) and re.fullmatch(r'[A-Za-z0-9._@:-]{1,128}', user) else '',
             'passphrase': key.get('passphrase') is True, 'host': key.get('host') is True})
     return result
 
@@ -366,7 +369,7 @@ def command_plan(action, device='', backup='', key_id=''):
             raise ValueError('Enter the backup ID printed by setup')
     elif backup:
         raise ValueError('Backup ID is only valid for rollback')
-    if action == 'ssh-remove':
+    if action in ('ssh-remove', 'ssh-delete'):
         if not re.fullmatch(r'[0-9a-f]{64}', key_id):
             raise ValueError('Select a resident SSH key')
     elif key_id:
@@ -378,10 +381,10 @@ def command_plan(action, device='', backup='', key_id=''):
         return [install + ['--components', action.removeprefix('setup-')]]
     if action.startswith('openpgp-'):
         return [[sys.executable, str(SOURCE / 'scripts/manage-openpgp.py'), action.removeprefix('openpgp-')]]
-    if action == 'ssh-import':
-        return [[sys.executable, str(SOURCE / 'scripts/manage-ssh.py'), 'import']]
-    if action == 'ssh-remove':
-        return [[sys.executable, str(SOURCE / 'scripts/manage-ssh.py'), 'remove', '--key-id', key_id]]
+    if action in ('ssh-create', 'ssh-import'):
+        return [[sys.executable, str(SOURCE / 'scripts/manage-ssh.py'), action.removeprefix('ssh-')]]
+    if action in ('ssh-remove', 'ssh-delete'):
+        return [[sys.executable, str(SOURCE / 'scripts/manage-ssh.py'), action.removeprefix('ssh-'), '--key-id', key_id]]
     if action in ('add-key', 'remove-key'):
         return [[sys.executable, str(SOURCE / 'scripts/manage-keys.py'), 'add' if action == 'add-key' else 'remove']]
     if action == 'test-sudo':

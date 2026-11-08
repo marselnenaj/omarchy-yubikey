@@ -22,6 +22,9 @@ done
 On a compatible Omarchy installation, also run:
 
 ```sh
+python3 scripts/test-language-ui.py
+python3 scripts/test-control-ui.py --language de
+python3 scripts/test-control-ui.py --language pt-BR --width 640
 omarchy plugin validate plugins/yubikey.lock
 omarchy plugin validate plugins/yubikey.polkit
 ```
@@ -35,7 +38,8 @@ manual checks separately and do not claim a hardware route was tested when
 only a mock or static check ran.
 
 Native PAM tests need Linux-PAM headers and a C compiler (Arch: `base-devel pam`;
-Debian/Ubuntu: `build-essential libpam0g-dev`). They load the actual fallback gate
+Debian/Ubuntu: `build-essential libpam0g-dev`). The Rust Secret Service contract test needs `dbus-daemon`
+(Arch/Debian/Ubuntu: `dbus`) and starts its own private bus with synthetic data. They load the actual fallback gate
 in an isolated `pam_start_confdir` stack with synthetic key/password modules,
 never the system authentication configuration. Signed-transfer tests use disposable
 OpenSSH keys and real `ssh-keygen -Y` signatures. No real mappings belong in fixtures.

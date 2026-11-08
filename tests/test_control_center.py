@@ -67,6 +67,15 @@ class ControlTests(unittest.TestCase):
         script = str(control.SOURCE / 'scripts/manage-ssh.py')
         reference = 'a' * 64
         self.assertEqual(control.command_plan('ssh-import'), [[control.sys.executable, script, 'import']])
+        self.assertEqual(control.command_plan('ssh-create'), [[control.sys.executable, script, 'create']])
+        for arguments in ({'key_id': reference}, {'device': '/dev/example'}, {'backup': '20261104-120000-abcdef01'}):
+            with self.assertRaises(ValueError):
+                control.command_plan('ssh-create', **arguments)
+        self.assertEqual(control.command_plan('ssh-delete', key_id=reference),
+                         [[control.sys.executable, script, 'delete', '--key-id', reference]])
+        for key_id in ('', 'A' * 64, '1 --x'):
+            with self.assertRaises(ValueError):
+                control.command_plan('ssh-delete', key_id=key_id)
         self.assertEqual(control.command_plan('ssh-remove', key_id=reference),
                          [[control.sys.executable, script, 'remove', '--key-id', reference]])
         for key_id in ('', '1', '03', '1 --x', '-1', 'id_ed25519_sk_rk', 'A' * 64):
@@ -76,7 +85,9 @@ class ControlTests(unittest.TestCase):
             control.command_plan('ssh-import', key_id=reference)
         hostile = {'count': 2, 'keys': [
             {'id': reference, 'type': 'ed25519-sk', 'application': 'ssh:github.com',
-             'fingerprint': 'SHA256:' + 'A' * 43, 'passphrase': 'yes', 'host': True, 'name': 'private-value'},
+             'fingerprint': 'SHA256:' + 'A' * 43, 'passphrase': 'yes', 'host': True, 'name': 'private-value',
+             'user': 'work'},
+            {'id': 'b' * 64, 'user': 'bad user\nHost *'},
             {'id': 'bad', 'name': 'private-value'}]}
         loader = type('Loader', (), {'exec_module': lambda self, module:
                                     module.__dict__.update(status=lambda: hostile)})()
@@ -84,8 +95,9 @@ class ControlTests(unittest.TestCase):
                           return_value=type('Spec', (), {'loader': loader})()), \
                 patch.object(control.importlib.util, 'module_from_spec', return_value=type('M', (), {})()):
             value = control.ssh_status()
-        self.assertEqual(len(value['keys']), 1)
+        self.assertEqual(len(value['keys']), 2)
         self.assertEqual(value['keys'][0]['application'], 'ssh:github.com')
+        self.assertEqual([key['user'] for key in value['keys']], ['work', ''])
         self.assertFalse(value['keys'][0]['passphrase'])
         self.assertNotIn('private-value', json.dumps(value))
 
@@ -107,10 +119,18 @@ class ControlTests(unittest.TestCase):
     def test_ui_catalogs_cover_every_literal_and_preserve_placeholders(self):
         import re
         english = json.loads((ROOT / 'i18n/control/en.json').read_text())
-        german = json.loads((ROOT / 'i18n/control/de.json').read_text())
-        self.assertEqual(set(english), set(german))
-        for key, value in german.items():
-            self.assertEqual(re.findall(r'%[0-9]+', key), re.findall(r'%[0-9]+', value))
+        registry = json.loads((ROOT / 'i18n/locales.json').read_text())
+        catalogs = sorted((ROOT / 'i18n/control').glob('*.json'))
+        self.assertIn('de', [path.stem for path in catalogs])
+        self.assertIn('pt-BR', [path.stem for path in catalogs])
+        for path in catalogs:
+            with self.subTest(catalog=path.name):
+                # The loader builds the path from a normalized registry code.
+                self.assertIn(path.stem, registry)
+                translated = json.loads(path.read_text())
+                self.assertEqual(set(english), set(translated))
+                for key, value in translated.items():
+                    self.assertEqual(re.findall(r'%[0-9]+', key), re.findall(r'%[0-9]+', value))
         for path in (ROOT / 'ui').glob('*.qml'):
             for value in re.findall(r'strings\.t\(("(?:[^"\\]|\\.)*")', path.read_text()):
                 self.assertIn(json.loads(value), english)

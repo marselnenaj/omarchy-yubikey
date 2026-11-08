@@ -1,5 +1,5 @@
 // The GUI accepts metadata only. Secrets and command output never enter this model.
-var actions = ["setup", "setup-sudo", "setup-desktop", "setup-keyring", "add-key", "remove-key", "test-sudo", "desktop-restore", "keyring-add", "keyring-check", "keyring-unlock", "keyring-enable", "keyring-disable", "luks-check", "luks-enroll", "openpgp-import", "openpgp-trust", "openpgp-remove", "ssh-import", "ssh-remove", "backups", "rollback"]
+var actions = ["setup", "setup-sudo", "setup-desktop", "setup-keyring", "add-key", "remove-key", "test-sudo", "desktop-restore", "keyring-add", "keyring-check", "keyring-unlock", "keyring-enable", "keyring-disable", "luks-check", "luks-enroll", "openpgp-import", "openpgp-trust", "openpgp-remove", "ssh-create", "ssh-import", "ssh-remove", "ssh-delete", "backups", "rollback"]
 function count(value) { return typeof value === "number" && isFinite(value) && value >= 0 && value <= 1000 ? Math.floor(value) : 0 }
 function state(value) { return ["configured", "external", "unreadable", "not-configured"].indexOf(value) >= 0 ? value : "not-configured" }
 function publicText(value) { return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, "").slice(0, 256) : "" }
@@ -42,6 +42,7 @@ function cleanSnapshot(value) {
   }).map(function(key) {
     return {id: key.id, type: ["ed25519-sk", "ecdsa-sk"].indexOf(key.type) >= 0 ? key.type : "other", passphrase: key.passphrase === true, host: key.host === true,
       application: typeof key.application === "string" && /^ssh:[\x21-\x7e]{0,252}$/.test(key.application) ? key.application : "",
+      user: typeof key.user === "string" && /^[A-Za-z0-9._@:-]{1,128}$/.test(key.user) ? key.user : "",
       fingerprint: typeof key.fingerprint === "string" && /^SHA256:[A-Za-z0-9+/]{43}$/.test(key.fingerprint) ? key.fingerprint : ""}
   })}
   var tools = value.tools || {}
@@ -59,7 +60,7 @@ function parameters(action, device, backup, keyId) {
   } else if (action === "rollback") {
     if (!/^[0-9]{8}-[0-9]{6}-[a-f0-9]{8}$/.test(backup || "")) return null
     result = ["--backup", backup]
-  } else if (action === "ssh-remove") {
+  } else if (action === "ssh-remove" || action === "ssh-delete") {
     if (typeof keyId !== "string" || !/^[0-9a-f]{64}$/.test(keyId)) return null
     result = ["--key-id", keyId]
   }

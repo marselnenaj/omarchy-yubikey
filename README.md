@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-93c5fd" alt="License: MIT"></a>
-  <a href="docs/control-center.md"><img src="https://img.shields.io/badge/setup_plugin-0.5.2-c5f46b" alt="Setup plugin 0.5.2"></a>
+  <a href="docs/control-center.md"><img src="https://img.shields.io/badge/setup_plugin-0.6.0-c5f46b" alt="Setup plugin 0.6.0"></a>
   <img src="https://img.shields.io/badge/made_for-Omarchy_4-a3e635" alt="Made for Omarchy 4">
   <a href="https://github.com/marselnenaj/omarchy-yubikey/actions/workflows/checks.yml"><img src="https://github.com/marselnenaj/omarchy-yubikey/actions/workflows/checks.yml/badge.svg" alt="Checks"></a>
 </p>
@@ -46,7 +46,7 @@ Choose the parts you need. The PAM route also works without the plugins.
 | **Multiple accounts** | Keep enrollment and user data separate; review shared PAM changes | [Multiple users](docs/multi-user.md) |
 | **GNOME Keyring** | Decrypt a saved keyring password with the key's `hmac-secret`, then unlock over D-Bus | [Keyring helper](docs/keyring.md#gnome-keyring) |
 | **OpenPGP card** | Import the key on the card into GnuPG, trust it, or remove it again without losing secrets | [OpenPGP card](docs/openpgp.md) |
-| **Resident SSH keys** | Copy the SSH keys stored on the key into `~/.ssh` without overwriting files, and set up the git hosts named by their application | [SSH keys](docs/ssh.md) |
+| **Resident SSH keys** | Create resident SSH keys on the key, copy them into `~/.ssh` without overwriting files, and set up the git hosts named by their application | [SSH keys](docs/ssh.md) |
 | **LUKS2 boot unlock** | Enroll disk-unlock keys with PIN plus touch; integrate boot separately with a manual guide | [LUKS setup](docs/luks.md) |
 
 **Passwordless PAM and the optional helper work differently.** PAM verifies a
@@ -70,10 +70,10 @@ operations for setup and management. PINs and passwords stay in the terminal.
 
 <p align="center"><img src="preview.png" alt="Omarchy YubiKey control center with synthetic example status." width="100%"></p>
 
-The control center is **0.5.2**, with OpenPGP-card and resident SSH-key management.
-Its interface is English/German with English
+The control center is **0.6.0**, with OpenPGP-card and resident SSH-key management.
+Its interface is in English, German and Brazilian Portuguese, with English
 fallback; the existing authentication components retain their 50-language support.
-The standalone lock/Polkit plugins remain 0.3.0 and the Rust helper remains 0.2.0.
+The standalone lock/Polkit plugins are 0.3.1 and the Rust helper is 0.2.1.
 
 For terminal-only setup, clone the current source and run `./install.sh`.
 The wizard lets you choose sudo, desktop authentication and optional GNOME Keyring
@@ -85,8 +85,8 @@ LUKS enrollment is a separate opt-in command: `./install.sh --luks --device /dev
 It requests PIN plus touch and preserves the disk passphrase. Boot configuration
 is a manual step; read the [LUKS guide](docs/luks.md) first.
 
-The **v0.5.2 release** provides [source and checksums](https://github.com/marselnenaj/omarchy-yubikey/releases/tag/v0.5.2).
-The [release notes](docs/releases/0.5.2.md) describe reviewed dependency updates,
+The **v0.6.0 release** provides [source and checksums](https://github.com/marselnenaj/omarchy-yubikey/releases/tag/v0.6.0).
+The [release notes](docs/releases/0.6.0.md) describe language-selection fixes, resident SSH creation/deletion and reviewed dependency updates,
 component versions and validation.
 For manual setup or a custom PAM stack, see [PAM setup](docs/pam-setup.md).
 New PAM setup defaults to PIN plus touch and explicit password fallback.

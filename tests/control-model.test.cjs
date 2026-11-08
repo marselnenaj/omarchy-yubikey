@@ -40,10 +40,12 @@ test('OpenPGP keeps bounded public identity and per-slot state without card seri
 test('SSH exposes public metadata but removal requires an exact stable key reference', () => {
   const id = 'a'.repeat(64), fingerprint = 'SHA256:'+'A'.repeat(43);
   const source = {schema:1,ok:true,ssh:{count:2,keys:[
-    {id:id,type:'ed25519-sk',application:'ssh:github.com',fingerprint:fingerprint,passphrase:true,host:true,name:'private-value'},
+    {id:id,type:'ed25519-sk',application:'ssh:github.com',fingerprint:fingerprint,passphrase:true,host:true,name:'private-value',user:'work'},
+    {id:'b'.repeat(64),user:'bad user\nHost *'},
     {id:'1',name:'private-value'},null]}};
   const value = model.cleanSnapshot(source).ssh;
-  assert.equal(value.keys.length,1);
+  assert.equal(value.keys.length,2);
+  assert.deepEqual(value.keys.map(key => key.user),['work','']);
   assert.equal(value.keys[0].application,'ssh:github.com');
   assert.equal(value.keys[0].fingerprint,fingerprint);
   assert.equal(JSON.stringify(value).includes('private-value'),false);
@@ -51,4 +53,9 @@ test('SSH exposes public metadata but removal requires an exact stable key refer
   assert.deepEqual(model.parameters('ssh-remove','','',id),['--key-id',id]);
   for (const id of [undefined,0,1,51,'1 --x','02','A'.repeat(64)]) assert.equal(model.parameters('ssh-remove','','',id),null);
   assert.deepEqual(model.parameters('ssh-import','',''),[]);
+  assert.ok(model.actions.includes('ssh-create'));
+  assert.deepEqual(model.parameters('ssh-create','','',id),[]);
+  assert.ok(model.actions.includes('ssh-delete'));
+  assert.deepEqual(model.parameters('ssh-delete','','',id),['--key-id',id]);
+  assert.equal(model.parameters('ssh-delete','','','A'.repeat(64)),null);
 });

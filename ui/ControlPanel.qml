@@ -21,8 +21,16 @@ Item {
   readonly property bool canAct: !!snapshot && snapshot.supported && !busy
   readonly property int keyCount: snapshot ? snapshot.enrollment.count : 0
   readonly property int sshCount: snapshot && snapshot.ssh ? snapshot.ssh.count : 0
+  readonly property string sshDeleteWarning: strings.t("This deletes the key from the security key itself, permanently. It cannot be recovered or imported again; servers and Git hosts that trust it will need a new key.")
   readonly property var sshKeys: snapshot && snapshot.ssh && snapshot.ssh.keys ? snapshot.ssh.keys : []
-  // Public identity only; filenames and credential handles stay in the terminal.
+  // Public identity and user ID; filenames and credential handles stay in the terminal.
+  // The user ID tells apart keys for the same application; long (binary, hex)
+  // ones are shortened.
+  function sshKeyTitle(key) {
+    var title = key.application || strings.t("SSH key")
+    if (!key.user) return title
+    return title + " · " + (key.user.length > 24 ? key.user.slice(0, 16) + "…" : key.user)
+  }
   function sshKeyDetails(key) {
     var parts = [key.type === "ed25519-sk" ? "Ed25519-SK" : key.type === "ecdsa-sk" ? "ECDSA-SK" : strings.t("Other")]
     parts.push(key.passphrase ? strings.t("passphrase") : strings.t("no passphrase"))
@@ -77,6 +85,12 @@ Item {
     if (openpgp.ready) return strings.t("Ready")
     if (!openpgp.linked) return strings.t("Not linked to the card")
     return strings.t("Unavailable")
+  }
+  // An imported key that is not ready (unlinked, expired, revoked or disabled)
+  // may be fixed by fetching it again; the Update button is highlighted then.
+  function openpgpNeedsUpdate() {
+    var key = openpgp.key || {}
+    return openpgp.imported === true && (openpgp.ready !== true || key.expired === true || key.revoked === true || key.disabled === true)
   }
   // Omarchy 4.5's Commons.Translations can shadow the bundled loader and lack
   // number(); fall back to plain digits rather than losing every detail row.
@@ -294,9 +308,11 @@ Item {
                     }
                   }
                 }
-                ActionButton { text: strings.t("Import key"); primary: !root.openpgp.linked; enabled: root.canAct; onClicked: root.ask("openpgp-import", text) }
+                // Importing again refreshes an imported key and its card links, so the
+                // same button reads "Update key" once the key is in the keyring.
+                ActionButton { objectName: "openpgpImport"; text: root.openpgp.imported ? strings.t("Update key") : strings.t("Import key"); primary: !root.openpgp.imported || root.openpgpNeedsUpdate(); enabled: root.canAct; onClicked: root.ask("openpgp-import", text) }
                 ActionButton { text: strings.t("Trust as my key"); enabled: root.canAct && root.openpgp.imported && !root.openpgp.trusted; onClicked: root.ask("openpgp-trust", text) }
-                ActionButton { text: strings.t("Remove from keyring"); enabled: root.canAct && root.openpgp.imported; onClicked: root.ask("openpgp-remove", text) }
+                ActionButton { objectName: "openpgpRemove"; text: strings.t("Remove from keyring"); enabled: root.canAct && root.openpgp.imported; onClicked: root.ask("openpgp-remove", text) }
                 ActionButton { objectName: "openpgpIdentityToggle"; text: root.showOpenpgpIdentity ? strings.t("Hide name and email") : strings.t("Show name and email"); visible: !!root.openpgp.key && !!root.openpgp.key.uid; onClicked: root.showOpenpgpIdentity = !root.showOpenpgpIdentity }
               }
               FeatureCard {
@@ -304,30 +320,52 @@ Item {
                 title: strings.t("Resident SSH keys")
                 badge: strings.t("%1 in ~/.ssh", [strings.number(root.sshCount)])
                 ready: root.sshCount > 0
-                description: strings.t("Copy the SSH keys stored on your security key into ~/.ssh, for example on a new computer. Existing files are never overwritten. Removing a copy leaves the key on the security key.")
-                details: Column {
+                description: strings.t("Create SSH keys on your security key, or copy the ones it stores into ~/.ssh, for example on a new computer. Existing files are never overwritten. Removing a copy leaves the key on the security key.")
+                // Card-wide actions first, then each key in its own box with its own
+                // actions, so the two groups never sit next to each other.
+                details: [Flow {
+                  objectName: "sshCardActions"
+                  width: parent.width
+                  spacing: Style.space(8)
+                  ActionButton { objectName: "sshImport"; text: strings.t("Import SSH keys"); primary: root.sshCount === 0; enabled: root.canAct && root.snapshot.connected > 0; onClicked: root.ask("ssh-import", text) }
+                  ActionButton { objectName: "sshCreate"; text: strings.t("Create SSH key"); enabled: root.canAct && root.snapshot.connected > 0; onClicked: root.ask("ssh-create", text) }
+                }, Column {
                   objectName: "sshKeys"
                   width: parent.width
                   visible: root.sshKeys.length > 0
-                  spacing: Style.space(8)
+                  topPadding: Style.space(6)
+                  spacing: Style.space(10)
                   Repeater {
                     model: root.sshKeys
-                    RowLayout {
+                    Rectangle {
                       required property var modelData
                       required property int index
+                      objectName: "sshKeyBox" + index
                       width: parent.width
-                      spacing: Style.space(12)
+                      height: keyContent.implicitHeight + Style.space(14) * 2
+                      radius: Style.cornerRadius
+                      color: Util.alpha(Commons.Color.foreground, 0.035)
+                      border.color: Util.alpha(Commons.Color.foreground, 0.16)
+                      border.width: 1
                       Column {
-                        Layout.fillWidth: true
-                        Text { width: parent.width; text: modelData.application || strings.t("SSH key"); color: Commons.Color.foreground; font { family: Style.font.family; pixelSize: Style.font.body } textFormat: Text.PlainText; elide: Text.ElideRight }
+                        id: keyContent
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(14) }
+                        spacing: Style.space(6)
+                        Text { width: parent.width; text: root.sshKeyTitle(modelData); color: Commons.Color.foreground; font { family: Style.font.family; pixelSize: Style.font.body } textFormat: Text.PlainText; elide: Text.ElideRight }
                         Text { width: parent.width; text: root.sshKeyDetails(modelData); color: Util.alpha(Commons.Color.foreground, 0.73); font { family: Style.font.family; pixelSize: Style.font.caption } textFormat: Text.PlainText; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
                         TextEdit { width: parent.width; text: modelData.fingerprint; readOnly: true; selectByMouse: true; wrapMode: TextEdit.WrapAnywhere; color: Commons.Color.accent; font { family: Style.font.family; pixelSize: Style.font.caption } textFormat: TextEdit.PlainText }
+                        // One action per button: the copy, or the key on the security key.
+                        Flow {
+                          width: parent.width
+                          topPadding: Style.space(4)
+                          spacing: Style.space(8)
+                          ActionButton { objectName: "sshRemove" + index; text: strings.t("Remove copy"); enabled: root.canAct && !!modelData.id; onClicked: root.ask("ssh-remove", strings.t("Remove SSH key %1", [modelData.fingerprint.slice(0, 19)]), "", "", modelData.id) }
+                          ActionButton { objectName: "sshDelete" + index; text: strings.t("Delete from security key"); foreground: Commons.Color.urgent; accent: Commons.Color.urgent; enabled: root.canAct && !!modelData.id && root.snapshot.connected > 0; onClicked: root.ask("ssh-delete", strings.t("Delete SSH key %1 from the security key", [modelData.fingerprint.slice(0, 19)]), "", "", modelData.id) }
+                        }
                       }
-                      ActionButton { objectName: "sshRemove" + index; text: strings.t("Remove"); enabled: root.canAct && !!modelData.id; onClicked: root.ask("ssh-remove", strings.t("Remove SSH key %1", [modelData.fingerprint.slice(0, 19)]), "", "", modelData.id) }
                     }
                   }
-                }
-                ActionButton { text: strings.t("Import SSH keys"); primary: root.sshCount === 0; enabled: root.canAct && root.snapshot.connected > 0; onClicked: root.ask("ssh-import", text) }
+                }]
               }
               FeatureCard {
                 title: strings.t("A backup for every feature")
@@ -442,7 +480,11 @@ Item {
     id: confirmation
     objectName: "actionConfirmation"
     anchors.fill: parent
-    message: root.pendingTitle + "\n\n" + strings.t("Open an interactive terminal? Review the operation there before anything changes. PINs and passwords stay in that terminal.")
+    // Deleting from the security key cannot be undone; say so before the terminal opens.
+    message: root.pendingTitle + "\n\n"
+      + (root.pendingAction === "ssh-remove" ? strings.t("Only the copy in ~/.ssh is removed. The key stays on the security key and can be imported again.") + "\n\n" : "")
+      + (root.pendingAction === "ssh-delete" ? root.sshDeleteWarning + "\n\n" : "")
+      + strings.t("Open an interactive terminal? Review the operation there before anything changes. PINs and passwords stay in that terminal.")
     cancelText: strings.t("Cancel")
     confirmText: strings.t("Open terminal")
     onCanceled: { opened = false; root.focusFirst() }

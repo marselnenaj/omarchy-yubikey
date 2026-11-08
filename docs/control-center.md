@@ -19,7 +19,7 @@ The host can offer to enable the plugin during installation. Once enabled, use
 its key button in the bar. Adding/enabling the control center reads status; it
 does not enroll keys, install packages, edit PAM or enable login helpers.
 Review the source and [dependencies](../README.md#requirements-and-compatibility).
-The interface is available in English and German, follows the account's Omarchy
+The interface is available in English, German and Brazilian Portuguese, follows the account's Omarchy
 language live, and falls back to English for other languages. Existing lock,
 Polkit and helper catalogs still support all 50 Omarchy languages.
 
@@ -28,7 +28,7 @@ Polkit and helper catalogs still support all 50 Omarchy languages.
 | Page | Status and actions |
 | --- | --- |
 | Overview | Current account's PAM enrollment count, connected FIDO2-device count, sudo policy, desktop plugin and Keyring status; guided setup |
-| Security keys | Add a PIN-protected PAM backup key or remove one registration; import, trust or remove the OpenPGP key of a connected card ([OpenPGP card](openpgp.md)); copy resident SSH keys or remove a copy ([SSH](ssh.md)); guides to separate Keyring/LUKS enrollments and signed transfer |
+| Security keys | Add a PIN-protected PAM backup key or remove one registration; import, trust or remove the OpenPGP key of a connected card ([OpenPGP card](openpgp.md)); create a resident SSH key, copy resident SSH keys, remove a copy or permanently delete a resident key from the security key ([SSH](ssh.md)); guides to separate Keyring/LUKS enrollments and signed transfer |
 | Desktop | Set up or test sudo; configure the included lock/Polkit plugins; switch back to stock plugins while unlocked |
 | Keyring | Install the optional Rust helper; preserve existing enrollments; add a backup key; test decryption; unlock; enable/disable an installed login service |
 | Disk & recovery | Check/enroll an explicitly entered existing LUKS2 device; open the boot guide; list system PAM backup IDs and restore one selected backup |
@@ -36,8 +36,8 @@ Polkit and helper catalogs still support all 50 Omarchy languages.
 Counts describe configuration, not successful authentication. USB discovery
 counts FIDO2 devices, not necessarily enrolled YubiKeys. No device serials,
 credential handles, encrypted passwords or collection labels are shown.
-The key-management cards may show bounded public fingerprints and SSH
-applications. OpenPGP name/email is optional and hidden initially. Fingerprints
+The key-management cards may show bounded public fingerprints, SSH
+applications and SSH key user IDs. OpenPGP name/email is optional and hidden initially. Fingerprints
 can be selected and copied; raw command output and private handles never enter
 the model. SSH removal selects a stable key reference and checks the files
 again after confirmation, so changing row positions cannot select another key.
