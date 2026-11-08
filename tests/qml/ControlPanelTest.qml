@@ -1,11 +1,84 @@
 import QtQuick
 import QtTest
+import qs.Commons as Commons
+import "Setup" as Setup
 TestCase {
   name: "ControlPanel"
   property var panel
   property int emitted: 0
   property var lastParameters
   when: false
+  property string screenshotDirectory: ""
+  Component { id: buttonFixture; Setup.ActionButton { text: "Primary action"; primary: true } }
+  function test_button_states() {
+    var original = {background: Commons.Color.background, foreground: Commons.Color.foreground, accent: Commons.Color.accent}
+    var button = buttonFixture.createObject(panel, {x: 40, y: 80, z: 100})
+    verify(button !== null)
+    function luminance(color) {
+      function linear(value) { return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4) }
+      return 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+    }
+    var paletteName = ""
+    function readable(state) {
+      wait(200) // Let the host's color and press animations settle.
+      var image = grabImage(button)
+      if (screenshotDirectory !== "") image.save(screenshotDirectory + "/button-" + paletteName + "-" + state + ".png")
+      if (button.color.a <= 0.99) throw new Error("Primary fill disappeared: " + paletteName + " / " + state)
+      var pixel = image.pixel(8, Math.floor(image.height / 2))
+      verify(pixel.a > 0.99, "Rendered primary surface must stay opaque in " + state)
+      var text = luminance(button.foreground), fill = luminance(pixel)
+      verify((Math.max(text, fill) + 0.05) / (Math.min(text, fill) + 0.05) >= 4.5,
+             "Primary text must remain readable in " + state)
+    }
+    try {
+      var clicks = 0
+      button.clicked.connect(function() { clicks++ })
+      for (var palette of [
+        {name:"dark", background:"#1a1b26", foreground:"#a9b1d6", accent:"#7aa2f7"},
+        {name:"light", background:"#ffffff", foreground:"#172554", accent:"#1d4ed8"}
+      ]) {
+        paletteName = palette.name
+        Commons.Color.background = palette.background
+        Commons.Color.foreground = palette.foreground
+        Commons.Color.accent = palette.accent
+        panel.forceActiveFocus()
+        mouseMove(panel, 2, 2)
+        verify(!button.activeFocus)
+        readable("idle")
+        mouseMove(button, button.width / 2, button.height / 2)
+        tryCompare(button, "hot", true)
+        readable("hover")
+        mousePress(button, button.width / 2, button.height / 2)
+        readable("pressed")
+        mouseRelease(button, button.width / 2, button.height / 2)
+        mouseMove(panel, 2, 2)
+        button.forceActiveFocus()
+        verify(button.activeFocus)
+        readable("focus")
+        var before = clicks
+        keyClick(Qt.Key_Space)
+        compare(clicks, before + 1)
+        // A runtime switch back to secondary must restore the host binding.
+        button.primary = false
+        wait(200)
+        verify(button.color.a < 0.99)
+        compare(button.foreground, Commons.Color.foreground)
+        button.primary = true
+        readable("primary-again")
+        button.enabled = false
+        before = clicks
+        mouseClick(button, button.width / 2, button.height / 2)
+        compare(clicks, before)
+        verify(button.opacity < 1)
+        button.enabled = true
+      }
+    } finally {
+      button.destroy()
+      Commons.Color.background = original.background
+      Commons.Color.foreground = original.foreground
+      Commons.Color.accent = original.accent
+    }
+  }
   function test_actions_and_keyboard() {
     var originalSnapshot = panel.snapshot
     verify(panel.width > 0)

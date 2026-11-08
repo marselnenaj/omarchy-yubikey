@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.6.2 — 2026-11-08
+
+- Keep primary control-center buttons' accent fill opaque during hover, press
+  and keyboard focus. The host's translucent state fills left inverse text
+  unreadable on dark surfaces. Secondary buttons retain the host state binding.
+- Extend the native UI tests with real pointer/keyboard events and rendered
+  pixel/contrast checks in dark and light palettes, including disabled controls
+  and switching a primary button back to secondary at runtime.
+- Pause the UI fixture's repeating screenshot timer while tests run, preventing
+  reentrant test execution during animation and event waits.
+
 ## 0.6.1 — 2026-11-08
 
 - Recheck the selected SSH copy's stable identity and both saved file contents

@@ -58,14 +58,14 @@ ShellRoot {
     title: "YubiKey test fixture"
     Setup.ControlPanel { id: panel; anchors.fill: parent; snapshot: (FIXTURE) }
     Setup.BarWidget { visible: false }
-    ControlPanelTest { id: tests; panel: panel }
+    ControlPanelTest { id: tests; panel: panel; screenshotDirectory: OUTPUT }
     Timer {
       id: steps
       interval: 300; running: true; repeat: true
       property int step: -1
       onTriggered: {
         try {
-          if (step === -1) { tests.test_actions_and_keyboard(); panel.page = 0; step = 0; return }
+          if (step === -1) { running = false; tests.test_button_states(); tests.test_actions_and_keyboard(); panel.page = 0; step = 0; running = true; return }
           if (step >= 5) { console.log("UI_TESTS_PASSED"); Qt.quit(); return }
           if (OUTPUT !== "") {
             running = false
@@ -91,7 +91,7 @@ ShellRoot {
         if result.returncode or 'UI_TESTS_PASSED' not in output or any(value in output for value in bad):
             print(output)
             return 1
-        print(f'Native UI passed: keyboard cancellation/confirmation, action arguments, all five pages; {args.width}×{args.height}, {args.language}.')
+        print(f'Native UI passed: primary-button hover/press/focus contrast, keyboard cancellation/confirmation, action arguments, all five pages; {args.width}×{args.height}, {args.language}.')
     return 0
 
 
