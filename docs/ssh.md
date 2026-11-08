@@ -76,10 +76,13 @@ copy**. Its confirmation dialog carries this warning, and the terminal:
    key), nothing is deleted: another key with the same application and user ID is
    never taken in its place;
 5. requires typing `DELETE <application>`;
-6. runs `fido2-token -D -i <credential id>`, then writes the reviewed Git-host change
-   and removes the copy, which no longer works, without asking again.
+6. rechecks the selected identity and the exact saved contents of both local files
+   after confirmation. Changed, missing or symlinked copies stop before deletion;
+7. runs `fido2-token -D -i <credential id>`, then writes the reviewed Git-host change
+   and removes the copy, which no longer works, without asking again. The files
+   are checked again before configuration changes and local cleanup.
 
-`fido2-token` asks for the FIDO2 PIN in steps 4 and 6, and `ssh-keygen` in step 2 for
+`fido2-token` asks for the FIDO2 PIN in steps 4 and 7, and `ssh-keygen` in step 2 for
 a copy with a passphrase. Only one security key may be connected. A key that is only
 on the security key, without a copy in `~/.ssh`, is imported first and then deleted
 from its row.

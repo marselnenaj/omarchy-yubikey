@@ -464,7 +464,7 @@ class SshKeyTests(unittest.TestCase):
         self.resident(self.target, 'id_ed25519_sk_rk_y', cipher=b'aes256-ctr')
         self.assertIsNone(ssh.key_handle(self.target / 'id_ed25519_sk_rk_y'))
 
-    def remove_with(self, name, answers, creds, delete_result=0, token=True, download=None):
+    def remove_with(self, name, answers, creds, delete_result=0, token=True, download=None, calls=None):
         reference = ssh.key_reference(self.target, name)
         real_run = subprocess.run
         def run(command, **options):
@@ -475,7 +475,7 @@ class SshKeyTests(unittest.TestCase):
             if command[0] == 'ssh':
                 return real_run(command, **options)
             raise AssertionError(command)
-        calls = []
+        calls = [] if calls is None else calls
         def call(command, timeout, cwd=None):
             calls.append(command)
             if command[:2] == ['ssh-keygen', '-K']:
@@ -547,6 +547,50 @@ class SshKeyTests(unittest.TestCase):
         calls, output = self.remove_with(name, [''], creds, token=False)
         self.assertEqual(calls, [])
         self.assertTrue((self.target / name).exists())
+
+    def test_permanent_delete_rechecks_copy_after_typed_confirmation_before_hardware(self):
+        name = 'id_ed25519_sk_rk_github.com_work'
+        for change in ('private', 'public', 'pair', 'missing', 'symlink'):
+            with self.subTest(change=change):
+                for suffix in ('', '.pub'):
+                    (self.target / (name + suffix)).unlink(missing_ok=True)
+                self.resident(self.target, name, handle=b'M' * 48)
+                self.configure(name)
+                managed = (self.target / ssh.MANAGED).read_bytes()
+                config = (self.target / 'config').read_bytes()
+                calls = []
+                changed = {}
+                def answer(question):
+                    if question.startswith('Apply these SSH configuration changes?'):
+                        return 'y'
+                    self.assertTrue(question.startswith('Type "DELETE '), question)
+                    if change == 'private':
+                        # Same public identity, different private credential handle.
+                        self.resident(self.target, name, handle=b'N' * 48)
+                    elif change == 'public':
+                        path = self.target / (name + '.pub')
+                        path.write_bytes(path.read_bytes() + b'# changed comment\n')
+                    elif change == 'pair':
+                        self.resident(self.target, name, byte=7, handle=b'N' * 48)
+                    elif change == 'missing':
+                        (self.target / name).unlink()
+                    else:
+                        self.resident(self.work, name, handle=b'N' * 48)
+                        (self.target / name).unlink()
+                        (self.target / name).symlink_to(self.work / name)
+                    for suffix in ('', '.pub'):
+                        path = self.target / (name + suffix)
+                        changed[suffix] = path.read_bytes() if path.exists() else None
+                    return 'DELETE ssh:github.com'
+                with self.assertRaises((ValueError, OSError)):
+                    self.remove_with(name, answer, self.listing(b'M' * 48), calls=calls)
+                self.assertEqual(calls, [], 'A stale selection must never reach hardware deletion')
+                self.assertEqual((self.target / ssh.MANAGED).read_bytes(), managed)
+                self.assertEqual((self.target / 'config').read_bytes(), config)
+                for suffix, data in changed.items():
+                    path = self.target / (name + suffix)
+                    self.assertEqual(path.read_bytes() if path.exists() else None, data)
+                self.assertEqual((self.target / name).is_symlink(), change == 'symlink')
 
     def test_delete_asks_about_the_ssh_configuration_before_deleting(self):
         name = 'id_ed25519_sk_rk_github.com_work'
